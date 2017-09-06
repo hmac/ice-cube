@@ -1,0 +1,16 @@
+version: 2.0
+jobs:
+  build:
+    working_directory: ~/ice-cube
+    docker:
+      - image: fpco/stack-build:lts-9.3
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-stack
+      - run: stack --system-ghc test
+      - save_cache:
+          key: v1-stack
+          paths:
+            - ~/.stack
