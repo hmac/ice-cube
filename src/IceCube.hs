@@ -20,6 +20,20 @@ import Data.Maybe
 import Data.Time.Calendar (isLeapYear)
 import Data.Time.Calendar.MonthDay (monthLength)
 
+-- Date is a restricted version of DateTime with the hour, minute and second
+-- fields constrained to zero
+data Date = Date
+  { dateYear :: Int
+  , dateMonth :: Int
+  , dateDate :: Int
+  } deriving (Show)
+
+toDate :: DateTime -> Date
+toDate (DateTime y m d _ _ _) = Date y m d
+
+fromDate :: Date -> DateTime
+fromDate (Date y m d) = DateTime y m d 0 0 0
+
 -- Apply a crude ordering to date intervals
 -- We can't precisely compare (Days x) to (Months y)
 -- without knowing the absolute dates we're talking about
@@ -33,8 +47,8 @@ import Data.Time.Calendar.MonthDay (monthLength)
 deriving instance Ord DateInterval
 
 data Schedule = Schedule
-  { startTime :: DateTime
-  , endTime :: DateTime
+  { startDate :: DateTime
+  , endDate :: DateTime
   , rules :: [Rule]
   } deriving (Show)
 
@@ -50,8 +64,8 @@ data Rule
   deriving (Show)
 
 occurrences :: Schedule -> [DateTime]
-occurrences Schedule {startTime, endTime, rules} =
-  _occurrences rules startTime startTime endTime
+occurrences Schedule {startDate, endDate, rules} =
+  _occurrences rules startDate startDate endDate
 
 -- TODO: could use whileJust here?
 -- Because our date logic works by calculating the next valid date from the
