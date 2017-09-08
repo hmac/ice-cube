@@ -1,7 +1,7 @@
 import Test.Hspec
 
 import Data.Dates
-import Lib
+import IceCube
 
 main :: IO ()
 main =

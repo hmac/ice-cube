@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-module Lib
+module IceCube
   ( Schedule(..)
   , Rule(..)
   , diffToNextMatch

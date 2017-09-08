@@ -1,5 +1,5 @@
 name:                ice-cube
-version:             0.1.0.0
+version:             0.2.0.0
 -- synopsis:
 -- description:
 homepage:            https://github.com/hmac/ice-cube#readme
@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib
+  exposed-modules:     IceCube
   build-depends:       base >= 4.7 && < 5
                      , dates
                      , business
