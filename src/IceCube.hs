@@ -1,19 +1,17 @@
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE StandaloneDeriving #-}
 
 module IceCube
-  ( Schedule(..)
+  ( mkSchedule
+  , Schedule
   , Rule(..)
-  , diffToNextMatch
-  , nextDate
   , occurrences
-  , nextMatch
   ) where
 
 import Data.Dates
-       (DateInterval(Days, Months, Weeks, Years), DateTime(..), WeekDay,
-        addInterval, dateWeekDay, datesDifference, lastMonday,
-        minusInterval, weekdayNumber)
+       (DateInterval(..), DateTime(DateTime), WeekDay, weekdayNumber)
+import qualified Data.Dates as D
+       (DateInterval(..), addInterval, dateWeekDay, datesDifference,
+        lastMonday, minusInterval)
 
 import Data.Foldable (minimumBy)
 import Data.Maybe
@@ -23,10 +21,10 @@ import Data.Time.Calendar.MonthDay (monthLength)
 -- Date is a restricted version of DateTime with the hour, minute and second
 -- fields constrained to zero
 data Date = Date
-  { dateYear :: Int
-  , dateMonth :: Int
-  , dateDate :: Int
-  } deriving (Show)
+  { year :: Int
+  , month :: Int
+  , day :: Int
+  } deriving (Eq, Show, Ord)
 
 toDate :: DateTime -> Date
 toDate (DateTime y m d _ _ _) = Date y m d
@@ -34,23 +32,42 @@ toDate (DateTime y m d _ _ _) = Date y m d
 fromDate :: Date -> DateTime
 fromDate (Date y m d) = DateTime y m d 0 0 0
 
--- Apply a crude ordering to date intervals
--- We can't precisely compare (Days x) to (Months y)
--- without knowing the absolute dates we're talking about
--- (because different months have different numbers of days).
--- Instead of this, we order DateIntervals first by the size of
--- their constructor and then, within that, by their parameter.
--- Thus Years 2 > Years 1 > Months 13 > Months 1 > Weeks 6 > Weeks 1 > Days 10 > Days 1
--- Haskell's default derivation for Ord follows this pattern,
--- so we can just derive it here.
--- N.B. this will break if the order of constructors for DateInterval changes
-deriving instance Ord DateInterval
+-- Here we redefine functions from Data.Dates to act on Date rather than
+-- DateTime
+addInterval :: Date -> DateInterval -> Date
+addInterval d i = toDate $ D.addInterval (fromDate d) i
+
+minusInterval :: Date -> DateInterval -> Date
+minusInterval d i = toDate $ D.minusInterval (fromDate d) i
+
+dateWeekDay :: Date -> WeekDay
+dateWeekDay = D.dateWeekDay . fromDate
+
+datesDifference :: Date -> Date -> Integer
+datesDifference d1 d2 = D.datesDifference (fromDate d1) (fromDate d2)
+
+lastMonday :: Date -> Date
+lastMonday = toDate . D.lastMonday . fromDate
 
 data Schedule = Schedule
-  { startDate :: DateTime
-  , endDate :: DateTime
+  { startDate :: Date
+  , endDate :: Date
   , rules :: [Rule]
   } deriving (Show)
+
+-- |Create a new schedule
+--
+-- @
+-- mkSchedule (DateTime 2000 1 1 0 0 0)
+--            (DateTime 2001 1 1 0 0 0)
+--            [MonthlyInterval 1, DayOfMonth 15]
+-- @
+mkSchedule ::
+     DateTime -- ^ start date
+  -> DateTime -- ^ end date
+  -> [Rule] -- ^ recurrence rules
+  -> Schedule
+mkSchedule start end = Schedule (toDate start) (toDate end)
 
 -- TODO: use enums instead of ints for these?
 -- TODO: sort out the mess of Int vs Integer
@@ -63,19 +80,20 @@ data Rule
   | DayOfWeek WeekDay
   deriving (Show)
 
+-- |Get all occurrences for a schedule
 occurrences :: Schedule -> [DateTime]
 occurrences Schedule {startDate, endDate, rules} =
-  _occurrences rules startDate startDate endDate
+  map fromDate $ _occurrences rules startDate startDate endDate
 
 -- TODO: could use whileJust here?
 -- Because our date logic works by calculating the next valid date from the
 -- current one, we start at one day before the start so that the start date
 -- itself can be included as an occurrence.
-_occurrences :: [Rule] -> DateTime -> DateTime -> DateTime -> [DateTime]
+_occurrences :: [Rule] -> Date -> Date -> Date -> [Date]
 _occurrences rules current start end =
   drop 1 $ catMaybes $ iterate next (Just (prevDay current))
   where
-    next :: Maybe DateTime -> Maybe DateTime
+    next :: Maybe Date -> Maybe Date
     next c =
       case c of
         Just d -> nextDate rules (nextDay d) start end
@@ -87,33 +105,34 @@ _occurrences rules current start end =
 -- otherwise, find the smallest diffToNextMatch,
 --  apply its corresponding validation to get the next candidate,
 --  and recur
-nextDate :: [Rule] -> DateTime -> DateTime -> DateTime -> Maybe DateTime
+nextDate :: [Rule] -> Date -> Date -> Date -> Maybe Date
 nextDate rules currentDate startDate endDate
   | currentDate > endDate = Nothing
   | all pairIsZero diffs = Just currentDate
   | otherwise = nextDate rules nextCandidate startDate endDate
   where
+    diffs = map (\v -> (v, diffToNextMatch v startDate currentDate)) rules
+    minDiff = fst $ minimumInterval (filter (not . pairIsZero) diffs)
+    nextCandidate = nextMatch minDiff startDate currentDate
     pairIsZero :: (Rule, DateInterval) -> Bool
     pairIsZero = isZero . snd
-    diffs = map (\v -> (v, diffToNextMatch v startDate currentDate)) rules
-    minDiff = fst $ mapMinimum snd (filter (not . pairIsZero) diffs)
-    nextCandidate = nextMatch minDiff startDate currentDate
+    minimumInterval :: [(Rule, DateInterval)] -> (Rule, DateInterval)
+    minimumInterval = minimumBy (\(_, i1) (_, i2) -> compareInterval i1 i2)
 
-nextMatch :: Rule -> DateTime -> DateTime -> DateTime
-nextMatch v@(MonthlyInterval _) start current =
-  DateTime (year next) (month next) 1 0 0 0
+nextMatch :: Rule -> Date -> Date -> Date
+nextMatch v@(MonthlyInterval _) start current = Date (year next) (month next) 1
   where
     next = addInterval current $ diffToNextMatch v start current
 nextMatch v@(WeeklyInterval _) start current = lastMonday next
   where
     next = addInterval current $ diffToNextMatch v start current
-nextMatch v@(YearlyInterval _) start current = DateTime (year next) 1 1 0 0 0
+nextMatch v@(YearlyInterval _) start current = Date (year next) 1 1
   where
     next = addInterval current $ diffToNextMatch v start current
 nextMatch v start current =
   addInterval current $ diffToNextMatch v start current
 
-diffToNextMatch :: Rule -> DateTime -> DateTime -> DateInterval
+diffToNextMatch :: Rule -> Date -> Date -> DateInterval
 diffToNextMatch (DayOfMonth dayOfMonth) _startDate currentDate =
   let diff = dayOfMonth - day currentDate
       untilNextMonth = daysInMonth currentDate + diff
@@ -162,15 +181,15 @@ diffToNextMatch (DayOfWeek day) _startDate currentDate =
           else 7 - currentWeekday + weekday
   in Days (toInteger diff)
 
-daysInMonth :: DateTime -> Int
-daysInMonth DateTime {year, month} =
+daysInMonth :: Date -> Int
+daysInMonth (Date year month _) =
   monthLength (isLeapYear $ toInteger year) month
 
-nextDay :: DateTime -> DateTime
-nextDay d = addInterval d (Days 1)
+nextDay :: Date -> Date
+nextDay d = d `addInterval` Days 1
 
-prevDay :: DateTime -> DateTime
-prevDay d = minusInterval d (Days 1)
+prevDay :: Date -> Date
+prevDay d = d `minusInterval` Days 1
 
 isZero :: DateInterval -> Bool
 isZero (Days x) = x == 0
@@ -178,5 +197,10 @@ isZero (Weeks x) = x == 0
 isZero (Months x) = x == 0
 isZero (Years x) = x == 0
 
-mapMinimum :: (Foldable t, Ord b) => (a -> b) -> t a -> a
-mapMinimum f = minimumBy (\x y -> compare (f x) (f y))
+compareInterval :: DateInterval -> DateInterval -> Ordering
+compareInterval (Years a) (Years b) = compare a b
+compareInterval (Years _) _ = GT
+compareInterval (Months a) (Months b) = compare a b
+compareInterval (Months _) _ = GT
+compareInterval (Days a) (Days b) = compare a b
+compareInterval (Days _) _ = GT
