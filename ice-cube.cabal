@@ -1,5 +1,5 @@
 name:                ice-cube
-version:             0.3.0.0
+version:             0.4.0.0
 synopsis:            Date recurrence
 description:         A library for calculating recurring schedules. Ported from
                      the Ruby gem of the same name.
