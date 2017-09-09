@@ -1,7 +1,8 @@
 name:                ice-cube
-version:             0.2.0.0
--- synopsis:
--- description:
+version:             0.3.0.0
+synopsis:            Date recurrence
+description:         A library for calculating recurring schedules. Ported from
+                     the Ruby gem of the same name.
 homepage:            https://github.com/hmac/ice-cube#readme
 license:             BSD3
 license-file:        LICENSE
