@@ -10,8 +10,8 @@ module IceCube
 import Data.Dates
        (DateInterval(..), DateTime(DateTime), WeekDay, weekdayNumber)
 import qualified Data.Dates as D
-       (DateInterval(..), addInterval, dateWeekDay, datesDifference,
-        lastMonday, minusInterval)
+       (addInterval, dateWeekDay, datesDifference, lastMonday,
+        minusInterval)
 
 import Data.Foldable (minimumBy)
 import Data.Maybe
@@ -51,7 +51,7 @@ lastMonday = toDate . D.lastMonday . fromDate
 
 data Schedule = Schedule
   { startDate :: Date
-  , endDate :: Date
+  , endDate :: Maybe Date
   , rules :: [Rule]
   } deriving (Show)
 
@@ -64,10 +64,10 @@ data Schedule = Schedule
 -- @
 mkSchedule ::
      DateTime -- ^ start date
-  -> DateTime -- ^ end date
+  -> Maybe DateTime -- ^ end date
   -> [Rule] -- ^ recurrence rules
   -> Schedule
-mkSchedule start end = Schedule (toDate start) (toDate end)
+mkSchedule start end = Schedule (toDate start) (fmap toDate end)
 
 -- TODO: use enums instead of ints for these?
 -- TODO: sort out the mess of Int vs Integer
@@ -89,9 +89,9 @@ occurrences Schedule {startDate, endDate, rules} =
 -- Because our date logic works by calculating the next valid date from the
 -- current one, we start at one day before the start so that the start date
 -- itself can be included as an occurrence.
-_occurrences :: [Rule] -> Date -> Date -> Date -> [Date]
+_occurrences :: [Rule] -> Date -> Date -> Maybe Date -> [Date]
 _occurrences rules current start end =
-  drop 1 $ catMaybes $ iterate next (Just (prevDay current))
+  drop 1 $ catMaybes $ takeWhile isJust $ iterate next (Just (prevDay current))
   where
     next :: Maybe Date -> Maybe Date
     next c =
@@ -105,9 +105,10 @@ _occurrences rules current start end =
 -- otherwise, find the smallest diffToNextMatch,
 --  apply its corresponding validation to get the next candidate,
 --  and recur
-nextDate :: [Rule] -> Date -> Date -> Date -> Maybe Date
-nextDate rules currentDate startDate endDate
+nextDate :: [Rule] -> Date -> Date -> Maybe Date -> Maybe Date
+nextDate _ currentDate _ (Just endDate)
   | currentDate > endDate = Nothing
+nextDate rules currentDate startDate endDate
   | all pairIsZero diffs = Just currentDate
   | otherwise = nextDate rules nextCandidate startDate endDate
   where
